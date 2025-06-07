@@ -1,0 +1,106 @@
+
+const express = require('express');
+const app = express();
+const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const cors = require('cors');
+const ExcelJS = require('exceljs');
+
+app.use(cors());
+app.use(express.json());
+
+const SECRET = 'boomerang-secret';
+const db = new sqlite3.Database('./boomerang.db');
+
+app.post('/login', (req, res) => {
+  const { nomina, password } = req.body;
+  db.get('SELECT * FROM usuarios WHERE nomina = ?', [nomina], (err, user) => {
+    if (err || !user) return res.status(401).json({ error: 'Usuario no encontrado' });
+    bcrypt.compare(password, user.password, (err, result) => {
+      if (result) {
+        const token = jwt.sign({ nomina: user.nomina, rol: user.rol }, SECRET, { expiresIn: '8h' });
+        res.json({ token, rol: user.rol });
+      } else {
+        res.status(403).json({ error: 'Contraseña incorrecta' });
+      }
+    });
+  });
+});
+
+app.post('/register', (req, res) => {
+  const { nomina, nombre, password, rol } = req.body;
+  const hash = bcrypt.hashSync(password, 10);
+  db.run('INSERT INTO usuarios (nomina, nombre, password, rol) VALUES (?, ?, ?, ?)', [nomina, nombre, hash, rol], function(err) {
+    if (err) return res.status(500).json({ error: 'Error al registrar usuario' });
+    res.json({ success: true });
+  });
+});
+
+app.get('/nombre/:nomina', (req, res) => {
+  const nomina = req.params.nomina;
+  db.get('SELECT nombre FROM usuarios WHERE nomina = ?', [nomina], (err, row) => {
+    if (err || !row) return res.json({ nombre: '' });
+    res.json({ nombre: row.nombre });
+  });
+});
+
+function auth(req, res, next) {
+  const token = req.headers.authorization;
+  if (!token) return res.sendStatus(403);
+  jwt.verify(token, SECRET, (err, decoded) => {
+    if (err) return res.sendStatus(403);
+    req.user = decoded;
+    next();
+  });
+}
+
+app.post('/registro', auth, (req, res) => {
+  const datos = req.body;
+  const stmt = db.prepare(`INSERT INTO produccion (
+    nomina, nombre, area, fecha, hora, proyecto, codigo, estandar,
+    cantidad, tiempo_interferencia, motivo_interferencia,
+    promedio_eficiencia, total_piezas
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  for (const d of datos) {
+    stmt.run([
+      d.nomina, d.nombre, d.area, d.fecha, d.hora, d.proyecto, d.codigo, d.estandar,
+      d.cantidad, d.tiempo_interferencia, d.motivo_interferencia,
+      d.promedio_eficiencia, d.total_piezas
+    ]);
+  }
+  stmt.finalize();
+  res.json({ success: true });
+});
+
+app.get('/api/estandares', async (req, res) => {
+  const area = req.query.area;
+  const archivo = path.join(__dirname, 'estandares', `Estandares_${area.toLowerCase()}.xlsx`);
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(archivo);
+    const hoja = workbook.worksheets[0];
+
+    const estandares = hoja.getColumn(1).values
+      .map((codigo, i) => {
+        const estandar = hoja.getCell(`L${i}`).value;
+        return i > 1 && codigo && estandar ? {
+          codigo: codigo.toString().trim(),
+          estandar: parseFloat(estandar)
+        } : null;
+      })
+      .filter(e => e !== null);
+
+    res.json(estandares);
+  } catch (err) {
+    console.error("Error al leer estándares:", err.message);
+    res.status(500).json({ error: "No se pudieron cargar los estándares" });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor iniciado en http://localhost:${PORT}`);
+});
