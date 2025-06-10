@@ -66,11 +66,11 @@ app.post('/registro', auth, (req, res) => {
   const fecha = new Date().toISOString().split('T')[0];
   const area = 'Producción';
 
-  const stmt = db.prepare(\`INSERT INTO produccion (
+  const stmt = db.prepare("INSERT INTO produccion (
     nomina, nombre, area, fecha, hora, proyecto, codigo, estandar,
     cantidad, tiempo_interferencia, motivo_interferencia,
     promedio_eficiencia, total_piezas, eficiencia_ajustada, turno, maquina, tipo_interferencia
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`);
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
   try {
     for (const fila of produccion) {
