@@ -124,6 +124,9 @@ app.get('/resumen', auth, (req, res) => {
   });
 });
 
+ const concentradoRoutes = require('./concentradoRoutes');
+ app.use('/', concentradoRoutes);
+
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
